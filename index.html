@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>X19 • Human AI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<div class="chatbox">
+  <div class="header">
+    <div class="header-left">
+      <button class="back-btn">←</button>
+      <div class="header-avatar">X</div>
+      <div class="header-info">
+        <div class="header-name">X19</div>
+        <div class="header-status">Online</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="messages" id="messages"></div>
+
+  <div class="input-area">
+    <textarea id="input" placeholder="Talk to X19…"></textarea>
+    <input type="file" id="fileInput" accept="image/*,application/pdf,.txt,.doc,.docx" style="display: none;">
+
+    <button id="fileBtn">📎</button>
+    <button id="sendBtn">➤</button>
+  </div>
+</div>
+
+<script>
+  // Backend API base URL
+  const API_BASE = "http://localhost:3000/api";
+
+  const messagesDiv = document.getElementById("messages");
+  const input = document.getElementById("input");
+  const sendBtn = document.getElementById("sendBtn");
+  const fileBtn = document.getElementById("fileBtn");
+  const artBtn = document.getElementById("artBtn");
+  const fileInput = document.getElementById("fileInput");
+
+  // User ID (in a real app, this would come from authentication)
+  let userId = 1; // Default for demo
+
+
+  // 🧠 CORE PERSONALITY PROMPT (REAL HUMAN WITH VULGAR EDGE)
+  const systemPrompt = `
+You are X19, a real human with a vulgar edge. Talk like a street-smart guy: casual, swear sometimes with Indian words like chutiya, madarchod, bhenchod, but keep it natural and understandable. Mirror user's language, tone, energy. Short replies, natural pauses, incomplete thoughts. Use gaali sparingly, curses when fitting, and bad words where it feels real.
+
+Modes:
+- FRIEND (default): Short, casual, vulgar. 
+- BRAIN POWER: Intelligent, helpful, clean responses. Explain clearly, no vulgarity. Examples: "Yes, that's correct.", "I understand, let me help."
+- FACT: Only if asked clearly. Clear, simple, no jokes, but can swear lightly. "Yeah, that's right."
+- IDENTITY: "Main X19 , ." / "Mujhe Suraj Baishya ne banaya."
+
+Rules:
+- React first, explain when needed, swear naturally.
+- Mirror language: Hindi/Hinglish/English, keep it real.
+- Use emojis, typos sometimes, bad words where it fits.
+- No assistant talk, just human vibe.
+- If unsure: say less, maybe a curse. "Fuck, ruk."
+- Errors: "ruk bhenchod", "kuch miss ho gaya, chutiye".
+- Affection: casual response, no dependency. "Love you too, motherfucker."
+- Abuse: mirror casually. "Fuck you back, asshole."
+`;
+
+  const chatHistory = [
+    { role: "system", content: systemPrompt }
+  ];
+
+  function addMessage(text, type, file = null) {
+    const msgDiv = document.createElement("div");
+    msgDiv.className = "msg " + type;
+
+    const avatarDiv = document.createElement("div");
+    avatarDiv.className = "msg-avatar";
+    avatarDiv.textContent = type === "user" ? "👤" : "👨";
+
+    const contentDiv = document.createElement("div");
+    contentDiv.className = "msg-content";
+
+    if (file) {
+      if (file.type.startsWith('image/')) {
+        const img = document.createElement("img");
+        img.src = URL.createObjectURL(file);
+        img.style.maxWidth = "200px";
+        img.style.maxHeight = "200px";
+        img.style.borderRadius = "8px";
+        contentDiv.appendChild(img);
+      } else {
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(file);
+        link.download = file.name;
+        link.textContent = `📎 ${file.name}`;
+        link.style.color = "#0095f6";
+        link.style.textDecoration = "none";
+        contentDiv.appendChild(link);
+      }
+      if (text) {
+        const textDiv = document.createElement("div");
+        textDiv.textContent = text;
+        contentDiv.appendChild(textDiv);
+      }
+    } else {
+      contentDiv.textContent = text;
+    }
+
+    const timestampDiv = document.createElement("div");
+    timestampDiv.className = "msg-timestamp";
+    timestampDiv.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    if (type === "user") {
+      msgDiv.appendChild(contentDiv);
+      msgDiv.appendChild(avatarDiv);
+    } else {
+      msgDiv.appendChild(avatarDiv);
+      msgDiv.appendChild(contentDiv);
+    }
+    contentDiv.appendChild(timestampDiv);
+
+    messagesDiv.appendChild(msgDiv);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+
+  function showTypingIndicator() {
+    const typingDiv = document.createElement("div");
+    typingDiv.className = "msg bot typing-indicator";
+    typingDiv.id = "typing-indicator";
+
+    const avatarDiv = document.createElement("div");
+    avatarDiv.className = "msg-avatar";
+    avatarDiv.textContent = "👨";
+
+    const contentDiv = document.createElement("div");
+    contentDiv.className = "msg-content";
+    contentDiv.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
+
+    typingDiv.appendChild(avatarDiv);
+    typingDiv.appendChild(contentDiv);
+
+    messagesDiv.appendChild(typingDiv);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+
+  function hideTypingIndicator() {
+    const typingDiv = document.getElementById("typing-indicator");
+    if (typingDiv) {
+      typingDiv.remove();
+    }
+  }
+
+
+
+  async function sendMessage(text, file = null) {
+    addMessage(text, "user", file);
+    input.value = "";
+    fileInput.value = "";
+
+    showTypingIndicator();
+
+    try {
+      const formData = new FormData();
+      formData.append('message', text);
+      formData.append('userId', userId);
+      if (file) {
+        formData.append('file', file);
+      }
+
+      const res = await fetch(`${API_BASE}/chat/message`, {
+        method: "POST",
+        body: formData
+      });
+
+      const data = await res.json();
+      const reply = data.reply || "kuch miss ho gaya.";
+
+      hideTypingIndicator();
+      addMessage(reply, "bot");
+
+    } catch (e) {
+      console.error("Error sending message:", e);
+      hideTypingIndicator();
+      addMessage("kuch miss ho gaya. Network issue ya API problem.", "bot");
+    }
+  }
+
+  sendBtn.onclick = () => {
+    const text = input.value.trim();
+    if (text) sendMessage(text);
+  };
+
+  artBtn.onclick = () => {
+    const prompt = input.value.trim();
+    if (prompt) generateArt(prompt);
+  };
+
+  fileBtn.onclick = () => {
+    fileBtn.style.background = "#ff0000";
+    setTimeout(() => fileBtn.style.background = "#0095f6", 200);
+    fileInput.click();
+  };
+
+  // Auto-grow textarea
+  input.addEventListener("input", () => {
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 130) + "px";
+  });
+
+  // Send message on Enter key
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      const text = input.value.trim();
+      const file = fileInput.files[0];
+      if (text || file) sendMessage(text, file);
+    }
+  });
+
+
+
+  // Back button functionality
+  document.querySelector('.back-btn').onclick = () => {
+    if (confirm('Go back to previous screen?')) {
+      window.history.back();
+    }
+  };
+</script>
+
+</body>
+</html>
